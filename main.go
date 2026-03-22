@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -24,10 +25,11 @@ func NewURLStore(dbPath string) (*URLStore, error) {
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS urls (
-			id         INTEGER PRIMARY KEY AUTOINCREMENT,
-			short_code TEXT UNIQUE NOT NULL,
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			short_code   TEXT UNIQUE NOT NULL,
 			original_url TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			click_count  INTEGER DEFAULT 0,
+			created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
 	if err != nil {
@@ -52,6 +54,33 @@ func (s *URLStore) Get(shortCode string) (string, error) {
 		shortCode,
 	).Scan(&originalURL)
 	return originalURL, err
+}
+
+func (s *URLStore) IncrementClick(shortCode string) error {
+	_, err := s.db.Exec(
+		"UPDATE urls SET click_count = click_count + 1 WHERE short_code = ?",
+		shortCode,
+	)
+	return err
+}
+
+type URLStats struct {
+	ShortCode   string `json:"short_code"`
+	OriginalURL string `json:"original_url"`
+	ClickCount  int    `json:"click_count"`
+	CreatedAt   string `json:"created_at"`
+}
+
+func (s *URLStore) GetStats(shortCode string) (*URLStats, error) {
+	var stats URLStats
+	err := s.db.QueryRow(
+		"SELECT short_code, original_url, click_count, created_at FROM urls WHERE short_code = ?",
+		shortCode,
+	).Scan(&stats.ShortCode, &stats.OriginalURL, &stats.ClickCount, &stats.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &stats, nil
 }
 
 func generateShortCode() (string, error) {
@@ -91,6 +120,16 @@ func main() {
 			return
 		}
 
+		parsedURL, err := url.ParseRequestURI(req.URL)
+		if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+			http.Error(w, "invalid URL: must start with http:// or https://", http.StatusBadRequest)
+			return
+		}
+		if parsedURL.Host == "" {
+			http.Error(w, "invalid URL: missing host", http.StatusBadRequest)
+			return
+		}
+
 		code, err := generateShortCode()
 		if err != nil {
 			http.Error(w, "short code could not be generated", http.StatusInternalServerError)
@@ -120,7 +159,21 @@ func main() {
 			return
 		}
 
+		store.IncrementClick(code)
 		http.Redirect(w, r, originalURL, http.StatusMovedPermanently)
+	})
+
+	mux.HandleFunc("GET /stats/{shortCode}", func(w http.ResponseWriter, r *http.Request) {
+		code := r.PathValue("shortCode")
+
+		stats, err := store.GetStats(code)
+		if err != nil {
+			http.Error(w, "URL not found", http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(stats)
 	})
 
 	fmt.Println("Server is running on: http://localhost:8080")
