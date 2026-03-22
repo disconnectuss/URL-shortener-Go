@@ -20,7 +20,13 @@ type ShortenResponse struct {
 	ExpiresAt *string `json:"expires_at,omitempty"`
 }
 
-func handleShorten(store *URLStore) http.HandlerFunc {
+func handleHome() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "templates/index.html")
+	}
+}
+
+func handleShorten(store *URLStore, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req ShortenRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -66,7 +72,7 @@ func handleShorten(store *URLStore) http.HandlerFunc {
 		}
 
 		resp := ShortenResponse{
-			ShortURL: fmt.Sprintf("http://localhost:8080/%s", code),
+			ShortURL: fmt.Sprintf("%s/%s", baseURL, code),
 		}
 		if expiresAt != nil {
 			formatted := expiresAt.UTC().Format(time.RFC3339)
@@ -79,14 +85,29 @@ func handleShorten(store *URLStore) http.HandlerFunc {
 	}
 }
 
-func handleRedirect(store *URLStore) http.HandlerFunc {
+func handleRedirect(store *URLStore, cache *Cache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		code := r.PathValue("shortCode")
 
+		// Önce cache'e bak
+		if cache != nil {
+			if url, err := cache.Get(code); err == nil {
+				store.IncrementClick(code)
+				http.Redirect(w, r, url, http.StatusMovedPermanently)
+				return
+			}
+		}
+
+		// Cache'de yoksa DB'den oku
 		originalURL, err := store.Get(code)
 		if err != nil {
 			http.Error(w, "URL not found", http.StatusNotFound)
 			return
+		}
+
+		// Cache'e yaz
+		if cache != nil {
+			cache.Set(code, originalURL)
 		}
 
 		store.IncrementClick(code)

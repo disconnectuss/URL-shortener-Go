@@ -14,16 +14,16 @@ func setupTestServer(t *testing.T) (*URLStore, *http.ServeMux) {
 	dbPath := "test_" + t.Name() + ".db"
 	t.Cleanup(func() { os.Remove(dbPath) })
 
-	store, err := NewURLStore(dbPath)
+	store, err := NewURLStore("sqlite3", dbPath)
 	if err != nil {
 		t.Fatal("failed to create store:", err)
 	}
 	t.Cleanup(func() { store.Close() })
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /shorten", handleShorten(store))
+	mux.HandleFunc("POST /shorten", handleShorten(store, "http://localhost:8080"))
 	mux.HandleFunc("GET /stats/{shortCode}", handleStats(store))
-	mux.HandleFunc("GET /{shortCode}", handleRedirect(store))
+	mux.HandleFunc("GET /{shortCode}", handleRedirect(store, nil))
 
 	return store, mux
 }

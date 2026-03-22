@@ -11,7 +11,7 @@ func setupTestStore(t *testing.T) *URLStore {
 	dbPath := "test_" + t.Name() + ".db"
 	t.Cleanup(func() { os.Remove(dbPath) })
 
-	store, err := NewURLStore(dbPath)
+	store, err := NewURLStore("sqlite3", dbPath)
 	if err != nil {
 		t.Fatal("failed to create store:", err)
 	}

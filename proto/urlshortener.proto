@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package urlshortener;
+
+option go_package = "./proto";
+
+service URLShortener {
+  rpc Shorten(ShortenRequest) returns (ShortenResponse);
+  rpc Resolve(ResolveRequest) returns (ResolveResponse);
+  rpc GetStats(StatsRequest) returns (StatsResponse);
+}
+
+message ShortenRequest {
+  string url = 1;
+  string expires_in = 2; // optional: "30m", "24h", "7d"
+}
+
+message ShortenResponse {
+  string short_url = 1;
+  string expires_at = 2; // empty if no expiry
+}
+
+message ResolveRequest {
+  string short_code = 1;
+}
+
+message ResolveResponse {
+  string original_url = 1;
+}
+
+message StatsRequest {
+  string short_code = 1;
+}
+
+message StatsResponse {
+  string short_code = 1;
+  string original_url = 2;
+  int32 click_count = 3;
+  string created_at = 4;
+  string expires_at = 5;
+}
