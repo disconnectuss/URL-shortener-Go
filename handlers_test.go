@@ -80,7 +80,7 @@ func TestHandleShortenInvalidURL(t *testing.T) {
 func TestHandleRedirect(t *testing.T) {
 	store, mux := setupTestServer(t)
 
-	store.Save("redir1", "https://go.dev")
+	store.Save("redir1", "https://go.dev", nil)
 
 	req := httptest.NewRequest("GET", "/redir1", nil)
 	w := httptest.NewRecorder()
@@ -111,7 +111,7 @@ func TestHandleRedirectNotFound(t *testing.T) {
 func TestHandleStats(t *testing.T) {
 	store, mux := setupTestServer(t)
 
-	store.Save("stat1", "https://go.dev")
+	store.Save("stat1", "https://go.dev", nil)
 	store.IncrementClick("stat1")
 	store.IncrementClick("stat1")
 
@@ -134,9 +134,9 @@ func TestHandleStats(t *testing.T) {
 func TestRedirectIncrementsClickCount(t *testing.T) {
 	store, mux := setupTestServer(t)
 
-	store.Save("cnt01", "https://go.dev")
+	store.Save("cnt01", "https://go.dev", nil)
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		req := httptest.NewRequest("GET", "/cnt01", nil)
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, req)
@@ -145,5 +145,41 @@ func TestRedirectIncrementsClickCount(t *testing.T) {
 	stats, _ := store.GetStats("cnt01")
 	if stats.ClickCount != 3 {
 		t.Errorf("click_count = %d, want 3", stats.ClickCount)
+	}
+}
+
+func TestHandleShortenWithExpiry(t *testing.T) {
+	_, mux := setupTestServer(t)
+
+	body := `{"url": "https://go.dev", "expires_in": "24h"}`
+	req := httptest.NewRequest("POST", "/shorten", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusCreated)
+	}
+
+	var resp ShortenResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.ExpiresAt == nil {
+		t.Error("expires_at should not be nil when expires_in is set")
+	}
+}
+
+func TestHandleShortenInvalidExpiry(t *testing.T) {
+	_, mux := setupTestServer(t)
+
+	body := `{"url": "https://go.dev", "expires_in": "abc"}`
+	req := httptest.NewRequest("POST", "/shorten", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
 }

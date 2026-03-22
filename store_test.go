@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 func setupTestStore(t *testing.T) *URLStore {
@@ -22,7 +23,7 @@ func setupTestStore(t *testing.T) *URLStore {
 func TestSaveAndGet(t *testing.T) {
 	store := setupTestStore(t)
 
-	err := store.Save("abc123", "https://go.dev")
+	err := store.Save("abc123", "https://go.dev", nil)
 	if err != nil {
 		t.Fatal("Save failed:", err)
 	}
@@ -48,8 +49,8 @@ func TestGetNotFound(t *testing.T) {
 func TestDuplicateShortCode(t *testing.T) {
 	store := setupTestStore(t)
 
-	store.Save("dup123", "https://go.dev")
-	err := store.Save("dup123", "https://github.com")
+	store.Save("dup123", "https://go.dev", nil)
+	err := store.Save("dup123", "https://github.com", nil)
 	if err == nil {
 		t.Error("expected error for duplicate short code, got nil")
 	}
@@ -58,9 +59,9 @@ func TestDuplicateShortCode(t *testing.T) {
 func TestIncrementClick(t *testing.T) {
 	store := setupTestStore(t)
 
-	store.Save("click1", "https://go.dev")
+	store.Save("click1", "https://go.dev", nil)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		if err := store.IncrementClick("click1"); err != nil {
 			t.Fatal("IncrementClick failed:", err)
 		}
@@ -78,7 +79,7 @@ func TestIncrementClick(t *testing.T) {
 func TestGetStats(t *testing.T) {
 	store := setupTestStore(t)
 
-	store.Save("stat1", "https://github.com")
+	store.Save("stat1", "https://github.com", nil)
 
 	stats, err := store.GetStats("stat1")
 	if err != nil {
@@ -95,5 +96,32 @@ func TestGetStats(t *testing.T) {
 	}
 	if stats.CreatedAt == "" {
 		t.Error("created_at should not be empty")
+	}
+}
+
+func TestExpiredURLNotReturned(t *testing.T) {
+	store := setupTestStore(t)
+
+	expiry := time.Now().Add(-1 * time.Second)
+	store.Save("exp01", "https://go.dev", &expiry)
+
+	_, err := store.Get("exp01")
+	if err == nil {
+		t.Error("expected error for expired URL, got nil")
+	}
+}
+
+func TestNonExpiredURLReturned(t *testing.T) {
+	store := setupTestStore(t)
+
+	expiry := time.Now().Add(1 * time.Hour)
+	store.Save("live1", "https://go.dev", &expiry)
+
+	got, err := store.Get("live1")
+	if err != nil {
+		t.Fatal("Get failed:", err)
+	}
+	if got != "https://go.dev" {
+		t.Errorf("got %q, want %q", got, "https://go.dev")
 	}
 }
