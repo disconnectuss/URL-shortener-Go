@@ -42,10 +42,13 @@ func main() {
 		}
 	}
 
-	go cleanupLoop(store, 10*time.Minute)
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+	defer cleanupCancel()
+	go cleanupLoop(cleanupCtx, store, 10*time.Minute)
 
 	svc := service.New(store, c, cfg.BaseURL)
 
+	// HTTP Server
 	httpHandler := server.NewHTTPHandler(svc, cfg.RateLimit, cfg.RateBurst)
 	httpServer := &http.Server{
 		Addr:    ":" + cfg.Port,
@@ -59,6 +62,7 @@ func main() {
 		}
 	}()
 
+	// gRPC Server
 	lis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
 	if err != nil {
 		log.Fatal("gRPC listen failed:", err)
@@ -79,6 +83,9 @@ func main() {
 	<-quit
 
 	fmt.Println("\nShutting down servers...")
+
+	cleanupCancel() 
+
 	grpcSrv.GracefulStop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -100,17 +107,22 @@ func newStorage(driver, dsn string) (storage.Storage, error) {
 	}
 }
 
-func cleanupLoop(store storage.Storage, interval time.Duration) {
+func cleanupLoop(ctx context.Context, store storage.Storage, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	for range ticker.C {
-		count, err := store.CleanupExpired()
-		if err != nil {
-			log.Println("cleanup error:", err)
-			continue
-		}
-		if count > 0 {
-			log.Printf("cleaned up %d expired URLs", count)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			count, err := store.CleanupExpired()
+			if err != nil {
+				log.Println("cleanup error:", err)
+				continue
+			}
+			if count > 0 {
+				log.Printf("cleaned up %d expired URLs", count)
+			}
 		}
 	}
 }

@@ -1,16 +1,5 @@
 package model
 
-import "time"
-
-type URL struct {
-	ID          int
-	ShortCode   string
-	OriginalURL string
-	ClickCount  int
-	CreatedAt   time.Time
-	ExpiresAt   *time.Time
-}
-
 type URLStats struct {
 	ShortCode   string  `json:"short_code"`
 	OriginalURL string  `json:"original_url"`

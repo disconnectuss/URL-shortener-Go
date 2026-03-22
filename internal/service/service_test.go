@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -81,6 +82,9 @@ func TestShortenEmptyURL(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for empty URL")
 	}
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("expected ErrValidation, got: %v", err)
+	}
 }
 
 func TestShortenInvalidURL(t *testing.T) {
@@ -101,6 +105,9 @@ func TestShortenInvalidURL(t *testing.T) {
 			if err == nil {
 				t.Errorf("expected error for URL %q", tt.url)
 			}
+			if !errors.Is(err, ErrValidation) {
+				t.Errorf("expected ErrValidation, got: %v", err)
+			}
 		})
 	}
 }
@@ -112,14 +119,17 @@ func TestShortenInvalidExpiry(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for invalid expiry")
 	}
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("expected ErrValidation, got: %v", err)
+	}
 }
 
 func TestResolve(t *testing.T) {
 	store := newMockStorage()
-	store.urls["abc123"] = "https://go.dev"
+	store.urls["abc12345"] = "https://go.dev"
 	svc := New(store, nil, "http://localhost:8080")
 
-	url, err := svc.Resolve("abc123")
+	url, err := svc.Resolve("abc12345")
 	if err != nil {
 		t.Fatal("Resolve failed:", err)
 	}
@@ -134,5 +144,20 @@ func TestResolveNotFound(t *testing.T) {
 	_, err := svc.Resolve("nonexistent")
 	if err == nil {
 		t.Error("expected error for nonexistent code")
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got: %v", err)
+	}
+}
+
+func TestGetStatsNotFound(t *testing.T) {
+	svc := New(newMockStorage(), nil, "http://localhost:8080")
+
+	_, err := svc.GetStats("nonexistent")
+	if err == nil {
+		t.Error("expected error for nonexistent code")
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got: %v", err)
 	}
 }

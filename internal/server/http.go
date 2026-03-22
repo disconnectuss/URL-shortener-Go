@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"url-shortener/internal/model"
@@ -36,7 +37,7 @@ func handleShorten(svc *service.URLService) http.HandlerFunc {
 
 		resp, err := svc.Shorten(req.URL, req.ExpiresIn)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), errorToStatus(err))
 			return
 		}
 
@@ -72,5 +73,16 @@ func handleStats(svc *service.URLService) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(stats)
+	}
+}
+
+func errorToStatus(err error) int {
+	switch {
+	case errors.Is(err, service.ErrValidation):
+		return http.StatusBadRequest
+	case errors.Is(err, service.ErrNotFound):
+		return http.StatusNotFound
+	default:
+		return http.StatusInternalServerError
 	}
 }

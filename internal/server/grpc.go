@@ -2,10 +2,10 @@ package server
 
 import (
 	"context"
-
-	pb "url-shortener/proto"
+	"errors"
 
 	"url-shortener/internal/service"
+	pb "url-shortener/proto"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,7 +23,7 @@ func NewGRPCServer(svc *service.URLService) *GRPCServer {
 func (s *GRPCServer) Shorten(ctx context.Context, req *pb.ShortenRequest) (*pb.ShortenResponse, error) {
 	resp, err := s.svc.Shorten(req.Url, req.ExpiresIn)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, grpcError(err)
 	}
 
 	pbResp := &pb.ShortenResponse{ShortUrl: resp.ShortURL}
@@ -40,7 +40,7 @@ func (s *GRPCServer) Resolve(ctx context.Context, req *pb.ResolveRequest) (*pb.R
 
 	originalURL, err := s.svc.Resolve(req.ShortCode)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, err.Error())
+		return nil, grpcError(err)
 	}
 
 	return &pb.ResolveResponse{OriginalUrl: originalURL}, nil
@@ -53,7 +53,7 @@ func (s *GRPCServer) GetStats(ctx context.Context, req *pb.StatsRequest) (*pb.St
 
 	stats, err := s.svc.GetStats(req.ShortCode)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, err.Error())
+		return nil, grpcError(err)
 	}
 
 	resp := &pb.StatsResponse{
@@ -66,4 +66,15 @@ func (s *GRPCServer) GetStats(ctx context.Context, req *pb.StatsRequest) (*pb.St
 		resp.ExpiresAt = *stats.ExpiresAt
 	}
 	return resp, nil
+}
+
+func grpcError(err error) error {
+	switch {
+	case errors.Is(err, service.ErrValidation):
+		return status.Error(codes.InvalidArgument, err.Error())
+	case errors.Is(err, service.ErrNotFound):
+		return status.Error(codes.NotFound, err.Error())
+	default:
+		return status.Error(codes.Internal, err.Error())
+	}
 }

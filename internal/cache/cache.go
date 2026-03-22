@@ -40,6 +40,11 @@ func (c *Cache) Set(shortCode, originalURL string) error {
 	return c.client.Set(ctx, "url:"+shortCode, originalURL, c.ttl).Err()
 }
 
+func (c *Cache) Delete(shortCode string) error {
+	ctx := context.Background()
+	return c.client.Del(ctx, "url:"+shortCode).Err()
+}
+
 func (c *Cache) Close() error {
 	return c.client.Close()
 }

@@ -37,7 +37,7 @@ func main() {
 	fmt.Printf("Expires at: %s\n", shortenResp.ExpiresAt)
 
 	shortURL := shortenResp.ShortUrl
-	code := shortURL[len(shortURL)-6:]
+	code := shortURL[len(shortURL)-8:]
 
 	fmt.Println("\n=== Resolve ===")
 	resolveResp, err := client.Resolve(ctx, &pb.ResolveRequest{

@@ -3,13 +3,21 @@ package service
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"time"
 
 	"url-shortener/internal/cache"
 	"url-shortener/internal/model"
 	"url-shortener/internal/storage"
+)
+
+var (
+	ErrValidation = errors.New("validation error")
+	ErrInternal   = errors.New("internal error")
+	ErrNotFound   = errors.New("not found")
 )
 
 type URLService struct {
@@ -28,30 +36,40 @@ func New(store storage.Storage, cache *cache.Cache, baseURL string) *URLService 
 
 func (s *URLService) Shorten(rawURL, expiresIn string) (*model.ShortenResponse, error) {
 	if rawURL == "" {
-		return nil, fmt.Errorf("url field is required")
+		return nil, fmt.Errorf("%w: url field is required", ErrValidation)
 	}
 
 	if err := validateURL(rawURL); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %s", ErrValidation, err.Error())
 	}
 
 	var expiresAt *time.Time
 	if expiresIn != "" {
 		d, err := parseDuration(expiresIn)
 		if err != nil {
-			return nil, fmt.Errorf("invalid expires_in: use format like 30m, 24h, 7d")
+			return nil, fmt.Errorf("%w: invalid expires_in: use format like 30m, 24h, 7d", ErrValidation)
 		}
 		t := time.Now().Add(d)
 		expiresAt = &t
 	}
 
-	code, err := generateShortCode()
-	if err != nil {
-		return nil, fmt.Errorf("could not generate short code")
-	}
+	var code string
+	for range 3 {
+		var err error
+		code, err = generateShortCode()
+		if err != nil {
+			return nil, fmt.Errorf("%w: could not generate short code", ErrInternal)
+		}
 
-	if err := s.store.Save(code, rawURL, expiresAt); err != nil {
-		return nil, fmt.Errorf("could not save URL: %w", err)
+		err = s.store.Save(code, rawURL, expiresAt)
+		if err == nil {
+			break
+		}
+
+		if code != "" {
+			continue
+		}
+		return nil, fmt.Errorf("%w: could not save URL", ErrInternal)
 	}
 
 	resp := &model.ShortenResponse{
@@ -67,27 +85,40 @@ func (s *URLService) Shorten(rawURL, expiresIn string) (*model.ShortenResponse, 
 
 func (s *URLService) Resolve(shortCode string) (string, error) {
 	if s.cache != nil {
-		if url, err := s.cache.Get(shortCode); err == nil {
-			s.store.IncrementClick(shortCode)
-			return url, nil
+		if cachedURL, err := s.cache.Get(shortCode); err == nil {
+			if _, err := s.store.Get(shortCode); err == nil {
+				if err := s.store.IncrementClick(shortCode); err != nil {
+					log.Printf("increment click error: %v", err)
+				}
+				return cachedURL, nil
+			}
+			s.cache.Delete(shortCode)
 		}
 	}
 
 	originalURL, err := s.store.Get(shortCode)
 	if err != nil {
-		return "", fmt.Errorf("URL not found")
+		return "", fmt.Errorf("%w: URL not found", ErrNotFound)
 	}
 
 	if s.cache != nil {
-		s.cache.Set(shortCode, originalURL)
+		if err := s.cache.Set(shortCode, originalURL); err != nil {
+			log.Printf("cache set error: %v", err)
+		}
 	}
 
-	s.store.IncrementClick(shortCode)
+	if err := s.store.IncrementClick(shortCode); err != nil {
+		log.Printf("increment click error: %v", err)
+	}
 	return originalURL, nil
 }
 
 func (s *URLService) GetStats(shortCode string) (*model.URLStats, error) {
-	return s.store.GetStats(shortCode)
+	stats, err := s.store.GetStats(shortCode)
+	if err != nil {
+		return nil, fmt.Errorf("%w: URL not found", ErrNotFound)
+	}
+	return stats, nil
 }
 
 func validateURL(rawURL string) error {
@@ -102,7 +133,7 @@ func validateURL(rawURL string) error {
 }
 
 func generateShortCode() (string, error) {
-	bytes := make([]byte, 3)
+	bytes := make([]byte, 4) // 4 byte = 8 hex char = 4.2 billion combinations
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
