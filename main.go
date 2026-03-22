@@ -2,40 +2,60 @@ package main
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"sync"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type URLStore struct {
-	mu   sync.RWMutex
-	urls map[string]string
+	db *sql.DB
 }
 
-func NewURLStore() *URLStore {
-	return &URLStore{
-		urls: make(map[string]string),
+func NewURLStore(dbPath string) (*URLStore, error) {
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return nil, err
 	}
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS urls (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			short_code TEXT UNIQUE NOT NULL,
+			original_url TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	return &URLStore{db: db}, nil
 }
 
-func (s *URLStore) Save(shortCode, originalURL string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.urls[shortCode] = originalURL
+func (s *URLStore) Save(shortCode, originalURL string) error {
+	_, err := s.db.Exec(
+		"INSERT INTO urls (short_code, original_url) VALUES (?, ?)",
+		shortCode, originalURL,
+	)
+	return err
 }
 
-func (s *URLStore) Get(shortCode string) (string, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	url, ok := s.urls[shortCode]
-	return url, ok
+func (s *URLStore) Get(shortCode string) (string, error) {
+	var originalURL string
+	err := s.db.QueryRow(
+		"SELECT original_url FROM urls WHERE short_code = ?",
+		shortCode,
+	).Scan(&originalURL)
+	return originalURL, err
 }
 
 func generateShortCode() (string, error) {
-	bytes := make([]byte, 3) 
+	bytes := make([]byte, 3)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
@@ -51,7 +71,12 @@ type ShortenResponse struct {
 }
 
 func main() {
-	store := NewURLStore()
+	store, err := NewURLStore("urls.db")
+	if err != nil {
+		log.Fatal("Database connection failed:", err)
+	}
+	defer store.db.Close()
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /shorten", func(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +97,10 @@ func main() {
 			return
 		}
 
-		store.Save(code, req.URL)
+		if err := store.Save(code, req.URL); err != nil {
+			http.Error(w, "could not save URL", http.StatusInternalServerError)
+			return
+		}
 
 		resp := ShortenResponse{
 			ShortURL: fmt.Sprintf("http://localhost:8080/%s", code),
@@ -86,9 +114,9 @@ func main() {
 	mux.HandleFunc("GET /{shortCode}", func(w http.ResponseWriter, r *http.Request) {
 		code := r.PathValue("shortCode")
 
-		originalURL, ok := store.Get(code)
-		if !ok {
-			http.Error(w, "URL bulunamadı", http.StatusNotFound)
+		originalURL, err := store.Get(code)
+		if err != nil {
+			http.Error(w, "URL not found", http.StatusNotFound)
 			return
 		}
 
