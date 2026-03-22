@@ -25,7 +25,6 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// 1. Shorten
 	fmt.Println("=== Shorten ===")
 	shortenResp, err := client.Shorten(ctx, &pb.ShortenRequest{
 		Url:       "https://grpc.io",
@@ -37,11 +36,9 @@ func main() {
 	fmt.Printf("Short URL: %s\n", shortenResp.ShortUrl)
 	fmt.Printf("Expires at: %s\n", shortenResp.ExpiresAt)
 
-	// short code'u URL'den çıkar
 	shortURL := shortenResp.ShortUrl
 	code := shortURL[len(shortURL)-6:]
 
-	// 2. Resolve
 	fmt.Println("\n=== Resolve ===")
 	resolveResp, err := client.Resolve(ctx, &pb.ResolveRequest{
 		ShortCode: code,
@@ -51,7 +48,6 @@ func main() {
 	}
 	fmt.Printf("Original URL: %s\n", resolveResp.OriginalUrl)
 
-	// 3. GetStats
 	fmt.Println("\n=== GetStats ===")
 	statsResp, err := client.GetStats(ctx, &pb.StatsRequest{
 		ShortCode: code,
