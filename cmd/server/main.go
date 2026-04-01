@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -22,23 +22,26 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, nil)))
+
 	cfg := config.Load()
 
 	store, err := newStorage(cfg.DBDriver, cfg.DBDsn)
 	if err != nil {
-		log.Fatal("Database connection failed:", err)
+		slog.Error("database connection failed", "error", err)
+		os.Exit(1)
 	}
 	defer store.Close()
-	log.Printf("Connected to database (%s)", cfg.DBDriver)
+	slog.Info("connected to database", "driver", cfg.DBDriver)
 
 	var c *cache.Cache
 	if cfg.RedisAddr != "" {
 		c, err = cache.New(cfg.RedisAddr)
 		if err != nil {
-			log.Printf("Redis not available, running without cache: %v", err)
+			slog.Warn("redis not available, running without cache", "error", err)
 		} else {
 			defer c.Close()
-			log.Printf("Connected to Redis (%s)", cfg.RedisAddr)
+			slog.Info("connected to redis", "addr", cfg.RedisAddr)
 		}
 	}
 
@@ -56,25 +59,28 @@ func main() {
 	}
 
 	go func() {
-		fmt.Printf("HTTP server is running on: %s\n", cfg.BaseURL)
+		slog.Info("http server started", "addr", cfg.BaseURL)
 		if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
-			log.Fatal("HTTP server error:", err)
+			slog.Error("http server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
 	// gRPC Server
 	lis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
 	if err != nil {
-		log.Fatal("gRPC listen failed:", err)
+		slog.Error("grpc listen failed", "error", err)
+		os.Exit(1)
 	}
 
 	grpcSrv := grpc.NewServer()
 	pb.RegisterURLShortenerServer(grpcSrv, server.NewGRPCServer(svc))
 
 	go func() {
-		fmt.Printf("gRPC server is running on: :%s\n", cfg.GRPCPort)
+		slog.Info("grpc server started", "addr", ":"+cfg.GRPCPort)
 		if err := grpcSrv.Serve(lis); err != nil {
-			log.Fatal("gRPC server error:", err)
+			slog.Error("grpc server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -84,7 +90,7 @@ func main() {
 
 	fmt.Println("\nShutting down servers...")
 
-	cleanupCancel() 
+	cleanupCancel()
 
 	grpcSrv.GracefulStop()
 
@@ -92,10 +98,11 @@ func main() {
 	defer cancel()
 
 	if err := httpServer.Shutdown(ctx); err != nil {
-		log.Fatal("HTTP server forced to shutdown:", err)
+		slog.Error("http server forced to shutdown", "error", err)
+		os.Exit(1)
 	}
 
-	fmt.Println("All servers stopped gracefully")
+	slog.Info("all servers stopped gracefully")
 }
 
 func newStorage(driver, dsn string) (storage.Storage, error) {
@@ -117,11 +124,11 @@ func cleanupLoop(ctx context.Context, store storage.Storage, interval time.Durat
 		case <-ticker.C:
 			count, err := store.CleanupExpired(ctx)
 			if err != nil {
-				log.Println("cleanup error:", err)
+				slog.Error("cleanup failed", "error", err)
 				continue
 			}
 			if count > 0 {
-				log.Printf("cleaned up %d expired URLs", count)
+				slog.Info("cleaned up expired urls", "count", count)
 			}
 		}
 	}

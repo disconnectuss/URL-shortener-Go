@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/url"
 	"time"
 
@@ -89,7 +89,7 @@ func (s *URLService) Resolve(ctx context.Context, shortCode string) (string, err
 		if cachedURL, err := s.cache.Get(shortCode); err == nil {
 			if _, err := s.store.Get(ctx, shortCode); err == nil {
 				if err := s.store.IncrementClick(ctx, shortCode); err != nil {
-					log.Printf("increment click error: %v", err)
+					slog.Error("increment click failed", "error", err, "short_code", shortCode)
 				}
 				return cachedURL, nil
 			}
@@ -104,12 +104,12 @@ func (s *URLService) Resolve(ctx context.Context, shortCode string) (string, err
 
 	if s.cache != nil {
 		if err := s.cache.Set(shortCode, originalURL); err != nil {
-			log.Printf("cache set error: %v", err)
+			slog.Warn("cache set failed", "error", err, "short_code", shortCode)
 		}
 	}
 
 	if err := s.store.IncrementClick(ctx, shortCode); err != nil {
-		log.Printf("increment click error: %v", err)
+		slog.Error("increment click failed", "error", err, "short_code", shortCode)
 	}
 	return originalURL, nil
 }
