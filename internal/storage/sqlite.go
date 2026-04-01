@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"time"
 
@@ -40,38 +41,38 @@ func NewSQLite(dsn string) (*SQLiteStore, error) {
 	return &SQLiteStore{db: db}, nil
 }
 
-func (s *SQLiteStore) Save(shortCode, originalURL string, expiresAt *time.Time) error {
+func (s *SQLiteStore) Save(ctx context.Context, shortCode, originalURL string, expiresAt *time.Time) error {
 	var expiresVal any
 	if expiresAt != nil {
 		expiresVal = expiresAt.UTC().Format("2006-01-02 15:04:05")
 	}
-	_, err := s.db.Exec(
+	_, err := s.db.ExecContext(ctx,
 		"INSERT INTO urls (short_code, original_url, expires_at) VALUES (?, ?, ?)",
 		shortCode, originalURL, expiresVal,
 	)
 	return err
 }
 
-func (s *SQLiteStore) Get(shortCode string) (string, error) {
+func (s *SQLiteStore) Get(ctx context.Context, shortCode string) (string, error) {
 	var originalURL string
-	err := s.db.QueryRow(
+	err := s.db.QueryRowContext(ctx,
 		"SELECT original_url FROM urls WHERE short_code = ? AND (expires_at IS NULL OR expires_at > datetime('now'))",
 		shortCode,
 	).Scan(&originalURL)
 	return originalURL, err
 }
 
-func (s *SQLiteStore) IncrementClick(shortCode string) error {
-	_, err := s.db.Exec(
+func (s *SQLiteStore) IncrementClick(ctx context.Context, shortCode string) error {
+	_, err := s.db.ExecContext(ctx,
 		"UPDATE urls SET click_count = click_count + 1 WHERE short_code = ?",
 		shortCode,
 	)
 	return err
 }
 
-func (s *SQLiteStore) GetStats(shortCode string) (*model.URLStats, error) {
+func (s *SQLiteStore) GetStats(ctx context.Context, shortCode string) (*model.URLStats, error) {
 	var stats model.URLStats
-	err := s.db.QueryRow(
+	err := s.db.QueryRowContext(ctx,
 		"SELECT short_code, original_url, click_count, created_at, expires_at FROM urls WHERE short_code = ?",
 		shortCode,
 	).Scan(&stats.ShortCode, &stats.OriginalURL, &stats.ClickCount, &stats.CreatedAt, &stats.ExpiresAt)
@@ -81,8 +82,8 @@ func (s *SQLiteStore) GetStats(shortCode string) (*model.URLStats, error) {
 	return &stats, nil
 }
 
-func (s *SQLiteStore) CleanupExpired() (int64, error) {
-	result, err := s.db.Exec("DELETE FROM urls WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')")
+func (s *SQLiteStore) CleanupExpired(ctx context.Context) (int64, error) {
+	result, err := s.db.ExecContext(ctx, "DELETE FROM urls WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')")
 	if err != nil {
 		return 0, err
 	}

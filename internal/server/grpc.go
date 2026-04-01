@@ -21,7 +21,7 @@ func NewGRPCServer(svc *service.URLService) *GRPCServer {
 }
 
 func (s *GRPCServer) Shorten(ctx context.Context, req *pb.ShortenRequest) (*pb.ShortenResponse, error) {
-	resp, err := s.svc.Shorten(req.Url, req.ExpiresIn)
+	resp, err := s.svc.Shorten(ctx, req.Url, req.ExpiresIn)
 	if err != nil {
 		return nil, grpcError(err)
 	}
@@ -38,7 +38,7 @@ func (s *GRPCServer) Resolve(ctx context.Context, req *pb.ResolveRequest) (*pb.R
 		return nil, status.Error(codes.InvalidArgument, "short_code is required")
 	}
 
-	originalURL, err := s.svc.Resolve(req.ShortCode)
+	originalURL, err := s.svc.Resolve(ctx, req.ShortCode)
 	if err != nil {
 		return nil, grpcError(err)
 	}
@@ -51,7 +51,7 @@ func (s *GRPCServer) GetStats(ctx context.Context, req *pb.StatsRequest) (*pb.St
 		return nil, status.Error(codes.InvalidArgument, "short_code is required")
 	}
 
-	stats, err := s.svc.GetStats(req.ShortCode)
+	stats, err := s.svc.GetStats(ctx, req.ShortCode)
 	if err != nil {
 		return nil, grpcError(err)
 	}

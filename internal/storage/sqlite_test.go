@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -22,12 +23,13 @@ func setupTestStore(t *testing.T) *SQLiteStore {
 
 func TestSaveAndGet(t *testing.T) {
 	store := setupTestStore(t)
+	ctx := context.Background()
 
-	if err := store.Save("abc123", "https://go.dev", nil); err != nil {
+	if err := store.Save(ctx, "abc123", "https://go.dev", nil); err != nil {
 		t.Fatal("Save failed:", err)
 	}
 
-	got, err := store.Get("abc123")
+	got, err := store.Get(ctx, "abc123")
 	if err != nil {
 		t.Fatal("Get failed:", err)
 	}
@@ -38,8 +40,9 @@ func TestSaveAndGet(t *testing.T) {
 
 func TestGetNotFound(t *testing.T) {
 	store := setupTestStore(t)
+	ctx := context.Background()
 
-	_, err := store.Get("nonexistent")
+	_, err := store.Get(ctx, "nonexistent")
 	if err == nil {
 		t.Error("expected error for nonexistent code, got nil")
 	}
@@ -47,9 +50,10 @@ func TestGetNotFound(t *testing.T) {
 
 func TestDuplicateShortCode(t *testing.T) {
 	store := setupTestStore(t)
+	ctx := context.Background()
 
-	store.Save("dup123", "https://go.dev", nil)
-	err := store.Save("dup123", "https://github.com", nil)
+	store.Save(ctx, "dup123", "https://go.dev", nil)
+	err := store.Save(ctx, "dup123", "https://github.com", nil)
 	if err == nil {
 		t.Error("expected error for duplicate short code, got nil")
 	}
@@ -57,15 +61,16 @@ func TestDuplicateShortCode(t *testing.T) {
 
 func TestIncrementClick(t *testing.T) {
 	store := setupTestStore(t)
-	store.Save("click1", "https://go.dev", nil)
+	ctx := context.Background()
+	store.Save(ctx, "click1", "https://go.dev", nil)
 
 	for range 5 {
-		if err := store.IncrementClick("click1"); err != nil {
+		if err := store.IncrementClick(ctx, "click1"); err != nil {
 			t.Fatal("IncrementClick failed:", err)
 		}
 	}
 
-	stats, err := store.GetStats("click1")
+	stats, err := store.GetStats(ctx, "click1")
 	if err != nil {
 		t.Fatal("GetStats failed:", err)
 	}
@@ -76,9 +81,10 @@ func TestIncrementClick(t *testing.T) {
 
 func TestGetStats(t *testing.T) {
 	store := setupTestStore(t)
-	store.Save("stat1", "https://github.com", nil)
+	ctx := context.Background()
+	store.Save(ctx, "stat1", "https://github.com", nil)
 
-	stats, err := store.GetStats("stat1")
+	stats, err := store.GetStats(ctx, "stat1")
 	if err != nil {
 		t.Fatal("GetStats failed:", err)
 	}
@@ -95,11 +101,12 @@ func TestGetStats(t *testing.T) {
 
 func TestExpiredURLNotReturned(t *testing.T) {
 	store := setupTestStore(t)
+	ctx := context.Background()
 
 	expiry := time.Now().Add(-1 * time.Second)
-	store.Save("exp01", "https://go.dev", &expiry)
+	store.Save(ctx, "exp01", "https://go.dev", &expiry)
 
-	_, err := store.Get("exp01")
+	_, err := store.Get(ctx, "exp01")
 	if err == nil {
 		t.Error("expected error for expired URL, got nil")
 	}
@@ -107,11 +114,12 @@ func TestExpiredURLNotReturned(t *testing.T) {
 
 func TestNonExpiredURLReturned(t *testing.T) {
 	store := setupTestStore(t)
+	ctx := context.Background()
 
 	expiry := time.Now().Add(1 * time.Hour)
-	store.Save("live1", "https://go.dev", &expiry)
+	store.Save(ctx, "live1", "https://go.dev", &expiry)
 
-	got, err := store.Get("live1")
+	got, err := store.Get(ctx, "live1")
 	if err != nil {
 		t.Fatal("Get failed:", err)
 	}

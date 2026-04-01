@@ -35,7 +35,7 @@ func handleShorten(svc *service.URLService) http.HandlerFunc {
 			return
 		}
 
-		resp, err := svc.Shorten(req.URL, req.ExpiresIn)
+		resp, err := svc.Shorten(r.Context(), req.URL, req.ExpiresIn)
 		if err != nil {
 			http.Error(w, err.Error(), errorToStatus(err))
 			return
@@ -51,7 +51,7 @@ func handleRedirect(svc *service.URLService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		code := r.PathValue("shortCode")
 
-		originalURL, err := svc.Resolve(code)
+		originalURL, err := svc.Resolve(r.Context(), code)
 		if err != nil {
 			http.Error(w, "URL not found", http.StatusNotFound)
 			return
@@ -65,7 +65,7 @@ func handleStats(svc *service.URLService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		code := r.PathValue("shortCode")
 
-		stats, err := svc.GetStats(code)
+		stats, err := svc.GetStats(r.Context(), code)
 		if err != nil {
 			http.Error(w, "URL not found", http.StatusNotFound)
 			return

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -17,12 +18,12 @@ func newMockStorage() *mockStorage {
 	return &mockStorage{urls: make(map[string]string)}
 }
 
-func (m *mockStorage) Save(shortCode, originalURL string, expiresAt *time.Time) error {
+func (m *mockStorage) Save(_ context.Context, shortCode, originalURL string, expiresAt *time.Time) error {
 	m.urls[shortCode] = originalURL
 	return nil
 }
 
-func (m *mockStorage) Get(shortCode string) (string, error) {
+func (m *mockStorage) Get(_ context.Context, shortCode string) (string, error) {
 	url, ok := m.urls[shortCode]
 	if !ok {
 		return "", fmt.Errorf("not found")
@@ -30,9 +31,9 @@ func (m *mockStorage) Get(shortCode string) (string, error) {
 	return url, nil
 }
 
-func (m *mockStorage) IncrementClick(shortCode string) error { return nil }
+func (m *mockStorage) IncrementClick(_ context.Context, shortCode string) error { return nil }
 
-func (m *mockStorage) GetStats(shortCode string) (*model.URLStats, error) {
+func (m *mockStorage) GetStats(_ context.Context, shortCode string) (*model.URLStats, error) {
 	url, ok := m.urls[shortCode]
 	if !ok {
 		return nil, fmt.Errorf("not found")
@@ -45,13 +46,14 @@ func (m *mockStorage) GetStats(shortCode string) (*model.URLStats, error) {
 	}, nil
 }
 
-func (m *mockStorage) CleanupExpired() (int64, error) { return 0, nil }
-func (m *mockStorage) Close() error                   { return nil }
+func (m *mockStorage) CleanupExpired(_ context.Context) (int64, error) { return 0, nil }
+func (m *mockStorage) Close() error                                    { return nil }
 
 func TestShortenValid(t *testing.T) {
 	svc := New(newMockStorage(), nil, "http://localhost:8080")
+	ctx := context.Background()
 
-	resp, err := svc.Shorten("https://go.dev", "")
+	resp, err := svc.Shorten(ctx, "https://go.dev", "")
 	if err != nil {
 		t.Fatal("Shorten failed:", err)
 	}
@@ -65,8 +67,9 @@ func TestShortenValid(t *testing.T) {
 
 func TestShortenWithExpiry(t *testing.T) {
 	svc := New(newMockStorage(), nil, "http://localhost:8080")
+	ctx := context.Background()
 
-	resp, err := svc.Shorten("https://go.dev", "24h")
+	resp, err := svc.Shorten(ctx, "https://go.dev", "24h")
 	if err != nil {
 		t.Fatal("Shorten failed:", err)
 	}
@@ -77,8 +80,9 @@ func TestShortenWithExpiry(t *testing.T) {
 
 func TestShortenEmptyURL(t *testing.T) {
 	svc := New(newMockStorage(), nil, "http://localhost:8080")
+	ctx := context.Background()
 
-	_, err := svc.Shorten("", "")
+	_, err := svc.Shorten(ctx, "", "")
 	if err == nil {
 		t.Error("expected error for empty URL")
 	}
@@ -89,6 +93,7 @@ func TestShortenEmptyURL(t *testing.T) {
 
 func TestShortenInvalidURL(t *testing.T) {
 	svc := New(newMockStorage(), nil, "http://localhost:8080")
+	ctx := context.Background()
 
 	tests := []struct {
 		name string
@@ -101,7 +106,7 @@ func TestShortenInvalidURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := svc.Shorten(tt.url, "")
+			_, err := svc.Shorten(ctx, tt.url, "")
 			if err == nil {
 				t.Errorf("expected error for URL %q", tt.url)
 			}
@@ -114,8 +119,9 @@ func TestShortenInvalidURL(t *testing.T) {
 
 func TestShortenInvalidExpiry(t *testing.T) {
 	svc := New(newMockStorage(), nil, "http://localhost:8080")
+	ctx := context.Background()
 
-	_, err := svc.Shorten("https://go.dev", "abc")
+	_, err := svc.Shorten(ctx, "https://go.dev", "abc")
 	if err == nil {
 		t.Error("expected error for invalid expiry")
 	}
@@ -128,8 +134,9 @@ func TestResolve(t *testing.T) {
 	store := newMockStorage()
 	store.urls["abc12345"] = "https://go.dev"
 	svc := New(store, nil, "http://localhost:8080")
+	ctx := context.Background()
 
-	url, err := svc.Resolve("abc12345")
+	url, err := svc.Resolve(ctx, "abc12345")
 	if err != nil {
 		t.Fatal("Resolve failed:", err)
 	}
@@ -140,8 +147,9 @@ func TestResolve(t *testing.T) {
 
 func TestResolveNotFound(t *testing.T) {
 	svc := New(newMockStorage(), nil, "http://localhost:8080")
+	ctx := context.Background()
 
-	_, err := svc.Resolve("nonexistent")
+	_, err := svc.Resolve(ctx, "nonexistent")
 	if err == nil {
 		t.Error("expected error for nonexistent code")
 	}
@@ -152,8 +160,9 @@ func TestResolveNotFound(t *testing.T) {
 
 func TestGetStatsNotFound(t *testing.T) {
 	svc := New(newMockStorage(), nil, "http://localhost:8080")
+	ctx := context.Background()
 
-	_, err := svc.GetStats("nonexistent")
+	_, err := svc.GetStats(ctx, "nonexistent")
 	if err == nil {
 		t.Error("expected error for nonexistent code")
 	}

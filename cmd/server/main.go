@@ -115,7 +115,7 @@ func cleanupLoop(ctx context.Context, store storage.Storage, interval time.Durat
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			count, err := store.CleanupExpired()
+			count, err := store.CleanupExpired(ctx)
 			if err != nil {
 				log.Println("cleanup error:", err)
 				continue

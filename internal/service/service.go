@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -34,7 +35,7 @@ func New(store storage.Storage, cache *cache.Cache, baseURL string) *URLService 
 	}
 }
 
-func (s *URLService) Shorten(rawURL, expiresIn string) (*model.ShortenResponse, error) {
+func (s *URLService) Shorten(ctx context.Context, rawURL, expiresIn string) (*model.ShortenResponse, error) {
 	if rawURL == "" {
 		return nil, fmt.Errorf("%w: url field is required", ErrValidation)
 	}
@@ -61,7 +62,7 @@ func (s *URLService) Shorten(rawURL, expiresIn string) (*model.ShortenResponse, 
 			return nil, fmt.Errorf("%w: could not generate short code", ErrInternal)
 		}
 
-		err = s.store.Save(code, rawURL, expiresAt)
+		err = s.store.Save(ctx, code, rawURL, expiresAt)
 		if err == nil {
 			break
 		}
@@ -83,11 +84,11 @@ func (s *URLService) Shorten(rawURL, expiresIn string) (*model.ShortenResponse, 
 	return resp, nil
 }
 
-func (s *URLService) Resolve(shortCode string) (string, error) {
+func (s *URLService) Resolve(ctx context.Context, shortCode string) (string, error) {
 	if s.cache != nil {
 		if cachedURL, err := s.cache.Get(shortCode); err == nil {
-			if _, err := s.store.Get(shortCode); err == nil {
-				if err := s.store.IncrementClick(shortCode); err != nil {
+			if _, err := s.store.Get(ctx, shortCode); err == nil {
+				if err := s.store.IncrementClick(ctx, shortCode); err != nil {
 					log.Printf("increment click error: %v", err)
 				}
 				return cachedURL, nil
@@ -96,7 +97,7 @@ func (s *URLService) Resolve(shortCode string) (string, error) {
 		}
 	}
 
-	originalURL, err := s.store.Get(shortCode)
+	originalURL, err := s.store.Get(ctx, shortCode)
 	if err != nil {
 		return "", fmt.Errorf("%w: URL not found", ErrNotFound)
 	}
@@ -107,14 +108,14 @@ func (s *URLService) Resolve(shortCode string) (string, error) {
 		}
 	}
 
-	if err := s.store.IncrementClick(shortCode); err != nil {
+	if err := s.store.IncrementClick(ctx, shortCode); err != nil {
 		log.Printf("increment click error: %v", err)
 	}
 	return originalURL, nil
 }
 
-func (s *URLService) GetStats(shortCode string) (*model.URLStats, error) {
-	stats, err := s.store.GetStats(shortCode)
+func (s *URLService) GetStats(ctx context.Context, shortCode string) (*model.URLStats, error) {
+	stats, err := s.store.GetStats(ctx, shortCode)
 	if err != nil {
 		return nil, fmt.Errorf("%w: URL not found", ErrNotFound)
 	}

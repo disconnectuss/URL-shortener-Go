@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"time"
 
@@ -40,34 +41,34 @@ func NewPostgres(dsn string) (*PostgresStore, error) {
 	return &PostgresStore{db: db}, nil
 }
 
-func (s *PostgresStore) Save(shortCode, originalURL string, expiresAt *time.Time) error {
-	_, err := s.db.Exec(
+func (s *PostgresStore) Save(ctx context.Context, shortCode, originalURL string, expiresAt *time.Time) error {
+	_, err := s.db.ExecContext(ctx,
 		"INSERT INTO urls (short_code, original_url, expires_at) VALUES ($1, $2, $3)",
 		shortCode, originalURL, expiresAt,
 	)
 	return err
 }
 
-func (s *PostgresStore) Get(shortCode string) (string, error) {
+func (s *PostgresStore) Get(ctx context.Context, shortCode string) (string, error) {
 	var originalURL string
-	err := s.db.QueryRow(
+	err := s.db.QueryRowContext(ctx,
 		"SELECT original_url FROM urls WHERE short_code = $1 AND (expires_at IS NULL OR expires_at > NOW())",
 		shortCode,
 	).Scan(&originalURL)
 	return originalURL, err
 }
 
-func (s *PostgresStore) IncrementClick(shortCode string) error {
-	_, err := s.db.Exec(
+func (s *PostgresStore) IncrementClick(ctx context.Context, shortCode string) error {
+	_, err := s.db.ExecContext(ctx,
 		"UPDATE urls SET click_count = click_count + 1 WHERE short_code = $1",
 		shortCode,
 	)
 	return err
 }
 
-func (s *PostgresStore) GetStats(shortCode string) (*model.URLStats, error) {
+func (s *PostgresStore) GetStats(ctx context.Context, shortCode string) (*model.URLStats, error) {
 	var stats model.URLStats
-	err := s.db.QueryRow(
+	err := s.db.QueryRowContext(ctx,
 		"SELECT short_code, original_url, click_count, created_at, expires_at FROM urls WHERE short_code = $1",
 		shortCode,
 	).Scan(&stats.ShortCode, &stats.OriginalURL, &stats.ClickCount, &stats.CreatedAt, &stats.ExpiresAt)
@@ -77,8 +78,8 @@ func (s *PostgresStore) GetStats(shortCode string) (*model.URLStats, error) {
 	return &stats, nil
 }
 
-func (s *PostgresStore) CleanupExpired() (int64, error) {
-	result, err := s.db.Exec("DELETE FROM urls WHERE expires_at IS NOT NULL AND expires_at <= NOW()")
+func (s *PostgresStore) CleanupExpired(ctx context.Context) (int64, error) {
+	result, err := s.db.ExecContext(ctx, "DELETE FROM urls WHERE expires_at IS NOT NULL AND expires_at <= NOW()")
 	if err != nil {
 		return 0, err
 	}

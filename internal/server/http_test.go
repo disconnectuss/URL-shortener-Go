@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -21,12 +22,12 @@ func newMockStorage() *mockStorage {
 	return &mockStorage{urls: make(map[string]string)}
 }
 
-func (m *mockStorage) Save(shortCode, originalURL string, expiresAt *time.Time) error {
+func (m *mockStorage) Save(_ context.Context, shortCode, originalURL string, expiresAt *time.Time) error {
 	m.urls[shortCode] = originalURL
 	return nil
 }
 
-func (m *mockStorage) Get(shortCode string) (string, error) {
+func (m *mockStorage) Get(_ context.Context, shortCode string) (string, error) {
 	url, ok := m.urls[shortCode]
 	if !ok {
 		return "", fmt.Errorf("not found")
@@ -34,9 +35,9 @@ func (m *mockStorage) Get(shortCode string) (string, error) {
 	return url, nil
 }
 
-func (m *mockStorage) IncrementClick(shortCode string) error { return nil }
+func (m *mockStorage) IncrementClick(_ context.Context, shortCode string) error { return nil }
 
-func (m *mockStorage) GetStats(shortCode string) (*model.URLStats, error) {
+func (m *mockStorage) GetStats(_ context.Context, shortCode string) (*model.URLStats, error) {
 	url, ok := m.urls[shortCode]
 	if !ok {
 		return nil, fmt.Errorf("not found")
@@ -49,8 +50,8 @@ func (m *mockStorage) GetStats(shortCode string) (*model.URLStats, error) {
 	}, nil
 }
 
-func (m *mockStorage) CleanupExpired() (int64, error) { return 0, nil }
-func (m *mockStorage) Close() error                   { return nil }
+func (m *mockStorage) CleanupExpired(_ context.Context) (int64, error) { return 0, nil }
+func (m *mockStorage) Close() error                                    { return nil }
 
 func newTestService(store *mockStorage) *service.URLService {
 	return service.New(store, nil, "http://localhost:8080")
