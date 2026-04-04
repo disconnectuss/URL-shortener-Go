@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,6 +47,14 @@ func (m *mockStorage) GetStats(_ context.Context, shortCode string) (*model.URLS
 	}, nil
 }
 
+func (m *mockStorage) Delete(_ context.Context, shortCode string) error {
+	if _, ok := m.urls[shortCode]; !ok {
+		return fmt.Errorf("not found")
+	}
+	delete(m.urls, shortCode)
+	return nil
+}
+
 func (m *mockStorage) CleanupExpired(_ context.Context) (int64, error) { return 0, nil }
 func (m *mockStorage) Close() error                                    { return nil }
 
@@ -53,7 +62,7 @@ func TestShortenValid(t *testing.T) {
 	svc := New(newMockStorage(), nil, "http://localhost:8080")
 	ctx := context.Background()
 
-	resp, err := svc.Shorten(ctx, "https://go.dev", "")
+	resp, err := svc.Shorten(ctx, "https://go.dev", "", "")
 	if err != nil {
 		t.Fatal("Shorten failed:", err)
 	}
@@ -69,7 +78,7 @@ func TestShortenWithExpiry(t *testing.T) {
 	svc := New(newMockStorage(), nil, "http://localhost:8080")
 	ctx := context.Background()
 
-	resp, err := svc.Shorten(ctx, "https://go.dev", "24h")
+	resp, err := svc.Shorten(ctx, "https://go.dev", "24h", "")
 	if err != nil {
 		t.Fatal("Shorten failed:", err)
 	}
@@ -82,7 +91,7 @@ func TestShortenEmptyURL(t *testing.T) {
 	svc := New(newMockStorage(), nil, "http://localhost:8080")
 	ctx := context.Background()
 
-	_, err := svc.Shorten(ctx, "", "")
+	_, err := svc.Shorten(ctx, "", "", "")
 	if err == nil {
 		t.Error("expected error for empty URL")
 	}
@@ -106,7 +115,7 @@ func TestShortenInvalidURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := svc.Shorten(ctx, tt.url, "")
+			_, err := svc.Shorten(ctx, tt.url, "", "")
 			if err == nil {
 				t.Errorf("expected error for URL %q", tt.url)
 			}
@@ -121,7 +130,7 @@ func TestShortenInvalidExpiry(t *testing.T) {
 	svc := New(newMockStorage(), nil, "http://localhost:8080")
 	ctx := context.Background()
 
-	_, err := svc.Shorten(ctx, "https://go.dev", "abc")
+	_, err := svc.Shorten(ctx, "https://go.dev", "abc", "")
 	if err == nil {
 		t.Error("expected error for invalid expiry")
 	}
@@ -163,6 +172,88 @@ func TestGetStatsNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := svc.GetStats(ctx, "nonexistent")
+	if err == nil {
+		t.Error("expected error for nonexistent code")
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got: %v", err)
+	}
+}
+
+func TestShortenCustomCode(t *testing.T) {
+	svc := New(newMockStorage(), nil, "http://localhost:8080")
+	ctx := context.Background()
+
+	resp, err := svc.Shorten(ctx, "https://go.dev", "", "my-link")
+	if err != nil {
+		t.Fatal("Shorten with custom code failed:", err)
+	}
+	if resp.ShortURL != "http://localhost:8080/my-link" {
+		t.Errorf("got %q, want %q", resp.ShortURL, "http://localhost:8080/my-link")
+	}
+}
+
+func TestShortenCustomCodeInvalid(t *testing.T) {
+	svc := New(newMockStorage(), nil, "http://localhost:8080")
+	ctx := context.Background()
+
+	tests := []struct {
+		name string
+		code string
+	}{
+		{"too short", "ab"},
+		{"has spaces", "my link"},
+		{"special chars", "my@link!"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := svc.Shorten(ctx, "https://go.dev", "", tt.code)
+			if err == nil {
+				t.Errorf("expected error for custom code %q", tt.code)
+			}
+			if !errors.Is(err, ErrValidation) {
+				t.Errorf("expected ErrValidation, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestShortenURLTooLong(t *testing.T) {
+	svc := New(newMockStorage(), nil, "http://localhost:8080")
+	ctx := context.Background()
+
+	longURL := "https://example.com/" + strings.Repeat("a", 2048)
+	_, err := svc.Shorten(ctx, longURL, "", "")
+	if err == nil {
+		t.Error("expected error for too-long URL")
+	}
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("expected ErrValidation, got: %v", err)
+	}
+}
+
+func TestDelete(t *testing.T) {
+	store := newMockStorage()
+	store.urls["abc12345"] = "https://go.dev"
+	svc := New(store, nil, "http://localhost:8080")
+	ctx := context.Background()
+
+	if err := svc.Delete(ctx, "abc12345"); err != nil {
+		t.Fatal("Delete failed:", err)
+	}
+
+	_, err := svc.Resolve(ctx, "abc12345")
+	if !errors.Is(err, ErrNotFound) {
+		t.Error("expected URL to be deleted")
+	}
+}
+
+func TestDeleteNotFound(t *testing.T) {
+	svc := New(newMockStorage(), nil, "http://localhost:8080")
+	ctx := context.Background()
+
+	err := svc.Delete(ctx, "nonexistent")
 	if err == nil {
 		t.Error("expected error for nonexistent code")
 	}

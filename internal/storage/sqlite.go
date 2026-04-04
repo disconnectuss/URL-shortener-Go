@@ -62,6 +62,21 @@ func (s *SQLiteStore) Get(ctx context.Context, shortCode string) (string, error)
 	return originalURL, err
 }
 
+func (s *SQLiteStore) Delete(ctx context.Context, shortCode string) error {
+	result, err := s.db.ExecContext(ctx, "DELETE FROM urls WHERE short_code = ?", shortCode)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (s *SQLiteStore) IncrementClick(ctx context.Context, shortCode string) error {
 	_, err := s.db.ExecContext(ctx,
 		"UPDATE urls SET click_count = click_count + 1 WHERE short_code = ?",

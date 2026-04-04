@@ -1,5 +1,7 @@
 package model
 
+const MaxURLLength = 2048
+
 type URLStats struct {
 	ShortCode   string  `json:"short_code"`
 	OriginalURL string  `json:"original_url"`
@@ -9,8 +11,9 @@ type URLStats struct {
 }
 
 type ShortenRequest struct {
-	URL       string `json:"url"`
-	ExpiresIn string `json:"expires_in,omitempty"`
+	URL        string `json:"url"`
+	ExpiresIn  string `json:"expires_in,omitempty"`
+	CustomCode string `json:"custom_code,omitempty"`
 }
 
 type ShortenResponse struct {

@@ -50,6 +50,14 @@ func (m *mockStorage) GetStats(_ context.Context, shortCode string) (*model.URLS
 	}, nil
 }
 
+func (m *mockStorage) Delete(_ context.Context, shortCode string) error {
+	if _, ok := m.urls[shortCode]; !ok {
+		return fmt.Errorf("not found")
+	}
+	delete(m.urls, shortCode)
+	return nil
+}
+
 func (m *mockStorage) CleanupExpired(_ context.Context) (int64, error) { return 0, nil }
 func (m *mockStorage) Close() error                                    { return nil }
 
@@ -206,5 +214,78 @@ func TestHandleStats_NotFound(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestHandleHealth(t *testing.T) {
+	handler := handleHealth()
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	body := rec.Body.String()
+	if body != `{"status":"ok"}` {
+		t.Errorf("body = %q, want %q", body, `{"status":"ok"}`)
+	}
+}
+
+func TestHandleDelete_Success(t *testing.T) {
+	store := newMockStorage()
+	store.urls["abc12345"] = "https://go.dev"
+	svc := newTestService(store)
+	handler := handleDelete(svc)
+
+	req := httptest.NewRequest(http.MethodDelete, "/abc12345", nil)
+	req.SetPathValue("shortCode", "abc12345")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+}
+
+func TestHandleDelete_NotFound(t *testing.T) {
+	svc := newTestService(newMockStorage())
+	handler := handleDelete(svc)
+
+	req := httptest.NewRequest(http.MethodDelete, "/nonexistent", nil)
+	req.SetPathValue("shortCode", "nonexistent")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestHandleShorten_CustomCode(t *testing.T) {
+	svc := newTestService(newMockStorage())
+	handler := handleShorten(svc)
+
+	body := `{"url": "https://go.dev", "custom_code": "my-link"}`
+	req := httptest.NewRequest(http.MethodPost, "/shorten", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusCreated)
+	}
+
+	var resp model.ShortenResponse
+	json.NewDecoder(rec.Body).Decode(&resp)
+
+	if resp.ShortURL != "http://localhost:8080/my-link" {
+		t.Errorf("short_url = %q, want %q", resp.ShortURL, "http://localhost:8080/my-link")
 	}
 }

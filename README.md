@@ -36,8 +36,10 @@ DB_DRIVER=postgres REDIS_ADDR=localhost:6379 go run ./cmd/server/
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `GET /health` | Health check |
 | `GET /` | Serves the web UI |
 | `POST /shorten` | Create a short URL |
+| `DELETE /{code}` | Delete a short URL |
 | `GET /{code}` | Redirect to original URL |
 | `GET /stats/{code}` | Get click stats for a URL |
 
@@ -47,6 +49,11 @@ DB_DRIVER=postgres REDIS_ADDR=localhost:6379 go run ./cmd/server/
 curl -X POST http://localhost:8080/shorten \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com", "expires_in": "24h"}'
+
+# With custom short code:
+curl -X POST http://localhost:8080/shorten \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com", "custom_code": "my-link"}'
 ```
 
 ```json
@@ -54,6 +61,12 @@ curl -X POST http://localhost:8080/shorten \
   "short_url": "http://localhost:8080/a1b2c3d4",
   "expires_at": "2026-03-23T22:00:00Z"
 }
+```
+
+**Delete a URL:**
+
+```bash
+curl -X DELETE http://localhost:8080/a1b2c3d4
 ```
 
 **Get stats:**

@@ -21,7 +21,7 @@ func NewGRPCServer(svc *service.URLService) *GRPCServer {
 }
 
 func (s *GRPCServer) Shorten(ctx context.Context, req *pb.ShortenRequest) (*pb.ShortenResponse, error) {
-	resp, err := s.svc.Shorten(ctx, req.Url, req.ExpiresIn)
+	resp, err := s.svc.Shorten(ctx, req.Url, req.ExpiresIn, "")
 	if err != nil {
 		return nil, grpcError(err)
 	}

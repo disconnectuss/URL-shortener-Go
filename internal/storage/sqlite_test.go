@@ -112,6 +112,31 @@ func TestExpiredURLNotReturned(t *testing.T) {
 	}
 }
 
+func TestDelete(t *testing.T) {
+	store := setupTestStore(t)
+	ctx := context.Background()
+	store.Save(ctx, "del1", "https://go.dev", nil)
+
+	if err := store.Delete(ctx, "del1"); err != nil {
+		t.Fatal("Delete failed:", err)
+	}
+
+	_, err := store.Get(ctx, "del1")
+	if err == nil {
+		t.Error("expected error after delete, got nil")
+	}
+}
+
+func TestDeleteNotFound(t *testing.T) {
+	store := setupTestStore(t)
+	ctx := context.Background()
+
+	err := store.Delete(ctx, "nonexistent")
+	if err == nil {
+		t.Error("expected error for nonexistent code, got nil")
+	}
+}
+
 func TestNonExpiredURLReturned(t *testing.T) {
 	store := setupTestStore(t)
 	ctx := context.Background()

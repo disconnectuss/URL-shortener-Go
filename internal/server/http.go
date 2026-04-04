@@ -12,13 +12,22 @@ import (
 func NewHTTPHandler(svc *service.URLService, rateLimit, rateBurst int) http.Handler {
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("GET /health", handleHealth())
 	mux.HandleFunc("GET /", handleHome())
 	mux.HandleFunc("POST /shorten", handleShorten(svc))
+	mux.HandleFunc("DELETE /{shortCode}", handleDelete(svc))
 	mux.HandleFunc("GET /stats/{shortCode}", handleStats(svc))
 	mux.HandleFunc("GET /{shortCode}", handleRedirect(svc))
 
 	rl := newRateLimiter(rateLimit, rateBurst)
 	return loggingMiddleware(rateLimitMiddleware(rl)(mux))
+}
+
+func handleHealth() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok"}`))
+	}
 }
 
 func handleHome() http.HandlerFunc {
@@ -35,7 +44,7 @@ func handleShorten(svc *service.URLService) http.HandlerFunc {
 			return
 		}
 
-		resp, err := svc.Shorten(r.Context(), req.URL, req.ExpiresIn)
+		resp, err := svc.Shorten(r.Context(), req.URL, req.ExpiresIn, req.CustomCode)
 		if err != nil {
 			http.Error(w, err.Error(), errorToStatus(err))
 			return
@@ -58,6 +67,19 @@ func handleRedirect(svc *service.URLService) http.HandlerFunc {
 		}
 
 		http.Redirect(w, r, originalURL, http.StatusMovedPermanently)
+	}
+}
+
+func handleDelete(svc *service.URLService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		code := r.PathValue("shortCode")
+
+		if err := svc.Delete(r.Context(), code); err != nil {
+			http.Error(w, "URL not found", http.StatusNotFound)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

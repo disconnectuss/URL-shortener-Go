@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"regexp"
 	"time"
 
 	"url-shortener/internal/cache"
@@ -35,9 +36,15 @@ func New(store storage.Storage, cache *cache.Cache, baseURL string) *URLService 
 	}
 }
 
-func (s *URLService) Shorten(ctx context.Context, rawURL, expiresIn string) (*model.ShortenResponse, error) {
+var validCustomCode = regexp.MustCompile(`^[a-zA-Z0-9_-]{3,32}$`)
+
+func (s *URLService) Shorten(ctx context.Context, rawURL, expiresIn, customCode string) (*model.ShortenResponse, error) {
 	if rawURL == "" {
 		return nil, fmt.Errorf("%w: url field is required", ErrValidation)
+	}
+
+	if len(rawURL) > model.MaxURLLength {
+		return nil, fmt.Errorf("%w: url is too long (max %d characters)", ErrValidation, model.MaxURLLength)
 	}
 
 	if err := validateURL(rawURL); err != nil {
@@ -55,22 +62,32 @@ func (s *URLService) Shorten(ctx context.Context, rawURL, expiresIn string) (*mo
 	}
 
 	var code string
-	for range 3 {
-		var err error
-		code, err = generateShortCode()
-		if err != nil {
-			return nil, fmt.Errorf("%w: could not generate short code", ErrInternal)
+	if customCode != "" {
+		if !validCustomCode.MatchString(customCode) {
+			return nil, fmt.Errorf("%w: custom_code must be 3-32 characters (letters, numbers, hyphens, underscores)", ErrValidation)
 		}
+		code = customCode
+		if err := s.store.Save(ctx, code, rawURL, expiresAt); err != nil {
+			return nil, fmt.Errorf("%w: custom code '%s' is already taken", ErrValidation, customCode)
+		}
+	} else {
+		for range 3 {
+			var err error
+			code, err = generateShortCode()
+			if err != nil {
+				return nil, fmt.Errorf("%w: could not generate short code", ErrInternal)
+			}
 
-		err = s.store.Save(ctx, code, rawURL, expiresAt)
-		if err == nil {
-			break
-		}
+			err = s.store.Save(ctx, code, rawURL, expiresAt)
+			if err == nil {
+				break
+			}
 
-		if code != "" {
-			continue
+			if code != "" {
+				continue
+			}
+			return nil, fmt.Errorf("%w: could not save URL", ErrInternal)
 		}
-		return nil, fmt.Errorf("%w: could not save URL", ErrInternal)
 	}
 
 	resp := &model.ShortenResponse{
@@ -82,6 +99,16 @@ func (s *URLService) Shorten(ctx context.Context, rawURL, expiresIn string) (*mo
 	}
 
 	return resp, nil
+}
+
+func (s *URLService) Delete(ctx context.Context, shortCode string) error {
+	if err := s.store.Delete(ctx, shortCode); err != nil {
+		return fmt.Errorf("%w: URL not found", ErrNotFound)
+	}
+	if s.cache != nil {
+		s.cache.Delete(shortCode)
+	}
+	return nil
 }
 
 func (s *URLService) Resolve(ctx context.Context, shortCode string) (string, error) {
